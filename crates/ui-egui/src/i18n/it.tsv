@@ -1429,3 +1429,23 @@ menu	Modify	Edita
 
 # ArtCraft feature naming
 	Additional Tools	Strumenti aggiuntivi
+
+# Structural steel (STEELSECTION, STEELINFO, STEELLIST, CUTLIST, BEAMCHECK)
+	Steel	Acciaio
+	Section...	Sezione...
+	Steel Section	Profilo in acciaio
+	Steel Section Properties	Proprietà profilo in acciaio
+	Section Properties	Proprietà sezione
+	Steel Profile List	Elenco profili in acciaio
+	Profile List	Elenco profili
+	Cut List	Distinta di taglio
+	Beam Check	Verifica trave
+	Enter bar length (mm)	Lunghezza barra (mm)
+	Enter kerf per cut (mm)	Spessore di taglio (mm)
+	Enter span (mm)	Luce della trave (mm)
+	Enter uniform load q (kN/m, self-weight is added)	Carico distribuito q (kN/m, il peso proprio è aggiunto)
+	Enter point load at mid-span P (kN)	Carico concentrato in mezzeria P (kN)
+	Enter profile (IPE200, HEB240, UPN100, L50x5, RHS100x50x4, CHS60.3x3.2, FL50x5…)	Profilo (IPE200, HEB240, UPN100, L50x5, RHS100x50x4, CHS60.3x3.2, FL50x5…)
+	Enter length in mm (or length*quantity) for the weight, or <done>	Lunghezza in mm (o lunghezza*quantità) per il peso, o <fine>
+	Centroid	Baricentro
+	Bottom	Base

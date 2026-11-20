@@ -1513,3 +1513,14 @@ menu	View	视图
 
 # ArtCraft feature naming
 	Additional Tools	其他工具
+
+# Structural steel
+	Steel	型钢
+	Section...	截面...
+	Steel Section	型钢截面
+	Steel Section Properties	型钢截面特性
+	Section Properties	截面特性
+	Steel Profile List	型钢规格表
+	Profile List	规格表
+	Cut List	下料清单
+	Beam Check	梁校核

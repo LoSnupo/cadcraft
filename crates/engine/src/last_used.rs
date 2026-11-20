@@ -29,6 +29,8 @@ pub struct LastUsed {
     pub classic_array_polar: bool,
     /// RECTANG's chamfer, fillet, width, elevation, thickness and rotation.
     pub rectang: RectangModes,
+    /// STEELSECTION / STEELINFO / BEAMCHECK: the profile designation typed last.
+    pub steel_profile: String,
 }
 
 impl Default for LastUsed {
@@ -36,6 +38,7 @@ impl Default for LastUsed {
         LastUsed {
             hatch_select: false,
             polygon_circumscribed: false,
+            steel_profile: "IPE200".into(),
             rotate_angle: 0.0,
             scale_factor: 1.0,
             txt2mtxt: cmd::Txt2MtxtOptions::default(),

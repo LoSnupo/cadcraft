@@ -47,6 +47,7 @@ mod qselect;
 mod selecttools;
 mod settings;
 mod spline_opts;
+mod steel;
 mod table;
 mod tolerance;
 mod trimextend;
@@ -215,6 +216,7 @@ pub fn command_specs() -> &'static [CommandSpec] {
         v.extend(options::specs());
         v.extend(interface::specs());
         v.extend(utility::specs());
+        v.extend(steel::specs());
         v.extend(table::specs());
         v.extend(tolerance::specs());
         v.extend(txt2mtxt::specs());
