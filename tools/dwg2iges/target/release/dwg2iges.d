@@ -1,0 +1,1 @@
+/home/user/cadcraft/tools/dwg2iges/target/release/dwg2iges: /home/user/cadcraft/tools/dwg2iges/src/brep.rs /home/user/cadcraft/tools/dwg2iges/src/geom.rs /home/user/cadcraft/tools/dwg2iges/src/iges.rs /home/user/cadcraft/tools/dwg2iges/src/main.rs /home/user/cadcraft/tools/dwg2iges/src/sat.rs /home/user/cadcraft/tools/dwg2iges/src/trim.rs

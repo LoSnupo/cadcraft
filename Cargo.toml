@@ -13,6 +13,7 @@ repository = "https://github.com/storytold/cadcraft"
 [workspace.dependencies]
 # internal
 cadcraft-geom = { path = "crates/geom" }
+cadcraft-iges = { path = "crates/iges" }
 # DXF tags: the shared reader and writer (moved from crates/dxf; craft-libs#791).
 craft-dxf = { git = "https://github.com/storytold/craft-libs", rev = "219c1d0b14177af6f291395d6587f61a5e09043a" }
 craft-dwg = { git = "https://github.com/storytold/craft-libs", rev = "7bb6c90076a0177d01cc4c482e7fd8dc9f31a8bf" }

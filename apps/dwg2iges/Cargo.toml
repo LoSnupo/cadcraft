@@ -1,0 +1,13 @@
+[package]
+name = "dwg2iges"
+description = "Converts the 3D solids of DWG/DXF drawings to IGES 5.3 trimmed surfaces"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+cadcraft-iges = { workspace = true }

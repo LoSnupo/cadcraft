@@ -35,6 +35,8 @@ impl Class {
 pub const TABLE: &[(&str, Class)] = &[
     ("geom", Class::Layer(0)),
     ("dwg", Class::Standalone),
+    // IGES export of 3D solids: reads ACIS through acadrust, no workspace dependencies.
+    ("iges", Class::Standalone),
     ("color", Class::Layer(0)),
     ("doc", Class::Layer(1)),
     ("constraints", Class::Layer(2)),
@@ -50,6 +52,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("cli", Class::Exempt),
     ("web", Class::Exempt),
     ("xtask", Class::Exempt),
+    ("dwg2iges", Class::Exempt),
 ];
 
 /// Explicit orderings *within* a layer (earlier may be used by later).
