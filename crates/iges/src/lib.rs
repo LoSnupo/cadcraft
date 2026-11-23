@@ -13,7 +13,10 @@ mod brep;
 mod geom;
 mod sat;
 mod trim;
+mod views;
 mod writer;
+
+pub use views::View;
 
 use std::collections::BTreeMap;
 
@@ -98,6 +101,44 @@ pub fn from_sat(texts: &[String], file_name: &str, source: &str, date: &str, tol
     }
     c.iges = w.finish(file_name, date, source);
     Ok(c)
+}
+
+/// Front, right, top and isometric views of solids given as SAT text, and the solids or faces
+/// that could not be read.
+pub fn views_from_sat(texts: &[String], tol: f64) -> Result<(Vec<View>, Vec<String>), String> {
+    if texts.is_empty() {
+        return Err("no 3D solids found in model space".into());
+    }
+    let tol = if tol.is_finite() && tol > 0.0 { tol.clamp(1e-5, 10.0) } else { DEFAULT_TOL };
+    let (mut edges, mut faces, mut warnings) = (Vec::new(), Vec::new(), Vec::new());
+    for (i, t) in texts.iter().enumerate() {
+        let sat = match sat::parse(t) {
+            Ok(s) => s,
+            Err(e) => {
+                warnings.push(format!("solid {}: {e}", i + 1));
+                continue;
+            }
+        };
+        let (fs, rep) = brep::faces(&sat, tol);
+        warnings.extend(rep.skipped.iter().map(|e| format!("solid {}: {e}", i + 1)));
+        edges.extend(rep.edges);
+        for f in &fs {
+            match trim::trim(f) {
+                Ok(t) => faces.push(t),
+                Err(e) => warnings.push(format!("solid {}: {e}", i + 1)),
+            }
+        }
+    }
+    if edges.is_empty() {
+        return Err(format!("no edges could be read: {}", warnings.join("; ")));
+    }
+    Ok((views::project(&edges, &faces), warnings))
+}
+
+/// The views of the solids of a DWG, DXF or SAT file.
+#[cfg(not(any(target_arch = "wasm32", all(target_os = "freebsd", target_arch = "aarch64"))))]
+pub fn views_of_file(input: &std::path::Path, tol: f64) -> Result<(Vec<View>, Vec<String>), String> {
+    views_from_sat(&solids_in_file(input)?, tol)
 }
 
 /// The SAT text of every 3D solid and body in model space of a DWG, DXF or SAT file.

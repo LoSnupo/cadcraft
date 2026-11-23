@@ -31,6 +31,9 @@ pub struct Boundary {
 #[derive(Clone, Debug)]
 pub struct Trimmed {
     pub surf: Nurbs,
+    /// The face's surface and, on a cylinder or cone, the seam angle the parameters start from.
+    pub surface: Surface,
+    pub seam: f64,
     pub outer: Boundary,
     pub inner: Vec<Boundary>,
     pub kind: &'static str,
@@ -147,7 +150,7 @@ fn plane(face: &Face, s: &Surface) -> Result<Trimmed, String> {
     };
     let (outer, inner) = classify(loops)?;
     let b = |uv: Vec<(f64, f64)>| Boundary { xyz: uv.iter().map(|&(u, v)| s.eval(u, v)).collect(), uv };
-    Ok(Trimmed { surf, outer: b(outer), inner: inner.into_iter().map(b).collect(), kind: "plane" })
+    Ok(Trimmed { surf, surface: *s, seam: 0.0, outer: b(outer), inner: inner.into_iter().map(b).collect(), kind: "plane" })
 }
 
 fn cone(face: &Face, s: &Surface) -> Result<Trimmed, String> {
@@ -248,7 +251,7 @@ fn cone(face: &Face, s: &Surface) -> Result<Trimmed, String> {
         uv: l.iter().map(|&(p, h)| (circle_param(p), h)).collect(),
     };
     let kind = if tan == 0.0 { "cylinder" } else { "cone" };
-    Ok(Trimmed { surf, outer: b(outer), inner: inner.into_iter().map(b).collect(), kind })
+    Ok(Trimmed { surf, surface: *s, seam: a, outer: b(outer), inner: inner.into_iter().map(b).collect(), kind })
 }
 
 pub fn trim(face: &Face) -> Result<Trimmed, String> {

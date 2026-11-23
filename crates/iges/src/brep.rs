@@ -19,6 +19,9 @@ pub struct Report {
     pub vertex_gap: f64,
     /// Largest distance between a sampled edge point and its face's surface.
     pub surface_gap: f64,
+    /// Every edge once, sampled from its start to its end vertex.
+    pub edges: Vec<Vec<V3>>,
+    seen: std::collections::HashSet<i64>,
 }
 
 /// Bounds every walk along `next` pointers: a cycle in hostile data ends here.
@@ -191,6 +194,11 @@ fn loop_points(sat: &Sat, lp: &Rec, x: &Xform, tol: f64, rep: &mut Report) -> Re
         let co = get(sat, Some(ce), "coedge")?;
         let edge = get(sat, co.ptr(3), "edge")?;
         let mut pts = edge_points(sat, edge, x, tol, rep)?;
+        if let Some(e) = co.ptr(3)
+            && rep.seen.insert(e)
+        {
+            rep.edges.push(pts.clone());
+        }
         if co.word(4) == Some("reversed") {
             pts.reverse();
         }

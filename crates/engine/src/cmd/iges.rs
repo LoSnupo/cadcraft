@@ -4,7 +4,11 @@
 
 use serde_json::{Value, json};
 
-use super::{CommandSpec, bad, f64_or, str_param};
+use cadcraft_doc::{EntityKind, HAlign, Layer, Text, VAlign};
+use cadcraft_geom::{PolyVertex, Vec2};
+
+use super::helpers::{lwpoly, v3};
+use super::{CommandSpec, bad, f64_or, point_param, str_param};
 use crate::{Result, Session};
 
 pub fn specs() -> Vec<CommandSpec> {
@@ -17,21 +21,139 @@ pub fn specs() -> Vec<CommandSpec> {
                  tolerance?: mm chord tolerance of the edges (default 0.01)} → {path, solids, faces, warnings, message}",
             )
             .noundo(),
+        CommandSpec::new("solidviews", "Solid Views", run_views)
+            .menu(&["View", "Solid Views (3D Solids)"])
+            .alias(&["viste", "vistesolidi", "solview3d"])
+            .params(
+                "{source?: .dwg/.dxf/.sat file (default: the drawing's file as saved), at?: [x,y] lower-left corner (default: right of the drawing), \
+                 labels?: bool (default true)} → {handles, views, warnings}: front, right, top and isometric views of the 3D solids, \
+                 their edges and outline lines, on layer VISTE_SOLIDI (hidden lines are not removed)",
+            ),
     ]
+}
+
+/// The layer the views go on.
+const VIEW_LAYER: &str = "VISTE_SOLIDI";
+
+fn source_of(s: &Session, cmd: &str, p: &Value) -> Result<(String, bool)> {
+    match str_param(p, "source") {
+        Some(src) => Ok((src.to_string(), false)),
+        None => {
+            let st = s.state()?;
+            let path = st.path.clone().ok_or_else(|| bad(cmd, "save the drawing as DWG or DXF first, or give `source`"))?;
+            Ok((path, !std::sync::Arc::ptr_eq(&st.doc, &st.saved)))
+        }
+    }
+}
+
+fn view_label(name: &str) -> &'static str {
+    match name {
+        "FRONT" => "VISTA FRONTALE",
+        "RIGHT" => "VISTA LATERALE DESTRA",
+        "TOP" => "PIANTA",
+        _ => "ASSONOMETRIA ISOMETRICA",
+    }
+}
+
+fn run_views(s: &mut Session, p: &Value) -> Result<Value> {
+    if !cadcraft_iges::READS_FILES {
+        return Err(bad("solidviews", "solid views are not available in this build"));
+    }
+    let (source, dirty) = source_of(s, "solidviews", p)?;
+    let (views, warnings) = views_of(std::path::Path::new(&source))?;
+    let bounds = |v: &cadcraft_iges::View| {
+        let mut b = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for q in v.lines.iter().flatten() {
+            b = (b.0.min(q[0]), b.1.min(q[1]), b.2.max(q[0]), b.3.max(q[1]));
+        }
+        b
+    };
+    let size = views.iter().map(&bounds).map(|b| (b.2 - b.0).max(b.3 - b.1)).fold(0.0, f64::max);
+    if !(size.is_finite() && size > 0.0) {
+        return Err(bad("solidviews", "the solids have no size"));
+    }
+    let gap = size * 0.35;
+    let start = match point_param(p, "at") {
+        Some(a) => a,
+        None => {
+            // Right of what is drawn already, so nothing is covered.
+            let ext = s.doc()?.extents(&cadcraft_doc::Space::Model);
+            if ext.is_empty() || !ext.max.is_finite() { Vec2::new(0.0, 0.0) } else { Vec2::new(ext.max.x + gap, ext.min.y) }
+        }
+    };
+    let labels = super::bool_or(p, "labels", true);
+    let text_h = (size * 0.05).max(2.5);
+    // Put the views on their own layer, then give back the current layer.
+    let previous = {
+        let d = s.doc_mut()?;
+        if d.layer(VIEW_LAYER).is_none() {
+            let mut l = Layer::new(VIEW_LAYER);
+            l.color = cadcraft_color::Color::from_aci(4);
+            d.layers.push(l);
+        }
+        let prev = d.header.str("CLAYER", "0");
+        d.header.set_str("CLAYER", VIEW_LAYER);
+        prev
+    };
+    let mut handles = Vec::new();
+    let mut x = start.x;
+    let result = (|| -> Result<()> {
+        for v in &views {
+            let b = bounds(v);
+            let off = Vec2::new(x - b.0, start.y - b.1);
+            for l in &v.lines {
+                let verts: Vec<PolyVertex> = l.iter().map(|q| PolyVertex::new(Vec2::new(q[0], q[1]) + off)).collect();
+                handles.push(s.add_entity(lwpoly(verts, false))?.hex());
+            }
+            if labels {
+                let at = Vec2::new(x + (b.2 - b.0) / 2.0, start.y - text_h * 1.2);
+                handles.push(
+                    s.add_entity(EntityKind::Text(Text {
+                        insert: v3(at),
+                        align_pt: Some(v3(at)),
+                        height: text_h,
+                        value: view_label(v.name).into(),
+                        rotation: 0.0,
+                        width_factor: 1.0,
+                        oblique: 0.0,
+                        style: "Standard".into(),
+                        halign: HAlign::Center,
+                        valign: VAlign::Top,
+                    }))?
+                    .hex(),
+                );
+            }
+            x += (b.2 - b.0) + gap;
+        }
+        Ok(())
+    })();
+    s.doc_mut()?.header.set_str("CLAYER", &previous);
+    result?;
+    let mut msg = format!("{} views of the 3D solids drawn on layer {VIEW_LAYER} ({} objects)", views.len(), handles.len());
+    for w in &warnings {
+        msg.push_str(&format!("\nleft out: {w}"));
+    }
+    if dirty {
+        msg.push_str("\n(solids read from the drawing as last saved)");
+    }
+    Ok(json!({ "handles": handles, "views": views.iter().map(|v| v.name).collect::<Vec<_>>(), "warnings": warnings, "message": msg }))
+}
+
+#[cfg(not(any(target_arch = "wasm32", all(target_os = "freebsd", target_arch = "aarch64"))))]
+fn views_of(src: &std::path::Path) -> Result<(Vec<cadcraft_iges::View>, Vec<String>)> {
+    cadcraft_iges::views_of_file(src, 0.05).map_err(|e| bad("solidviews", e))
+}
+
+#[cfg(any(target_arch = "wasm32", all(target_os = "freebsd", target_arch = "aarch64")))]
+fn views_of(_src: &std::path::Path) -> Result<(Vec<cadcraft_iges::View>, Vec<String>)> {
+    Err(bad("solidviews", "solid views are not available in this build"))
 }
 
 fn run(s: &mut Session, p: &Value) -> Result<Value> {
     if !cadcraft_iges::READS_FILES {
         return Err(bad("igesexport", "IGES export is not available in this build"));
     }
-    let (source, dirty) = match str_param(p, "source") {
-        Some(src) => (src.to_string(), false),
-        None => {
-            let st = s.state()?;
-            let path = st.path.clone().ok_or_else(|| bad("igesexport", "save the drawing as DWG or DXF first, or give `source`"))?;
-            (path, !std::sync::Arc::ptr_eq(&st.doc, &st.saved))
-        }
-    };
+    let (source, dirty) = source_of(s, "igesexport", p)?;
     let src = std::path::Path::new(&source);
     let out = match str_param(p, "path") {
         Some(o) => o.to_string(),
@@ -132,6 +254,13 @@ mod tests {
         assert_eq!(text.lines().filter(|l| l.starts_with("     144") && l.as_bytes().get(72) == Some(&b'D')).count(), 8);
         // Without a saved file and without `source` the command explains what it needs.
         assert!(Session::new().execute("igesexport", &json!({})).is_err());
+        // The views: two end circles and two silhouette lines per cylinder in the front view.
+        let n = s.doc().unwrap().entity_count();
+        let r = s.execute("solidviews", &json!({"source": src.to_string_lossy(), "at": [0, 0]})).unwrap();
+        assert_eq!(r["views"].as_array().unwrap().len(), 4, "{r}");
+        assert!(s.doc().unwrap().entity_count() > n + 4 * 4);
+        assert_eq!(s.doc().unwrap().header.str("CLAYER", "0"), "0", "the current layer is given back");
+        assert!(s.doc().unwrap().layer("VISTE_SOLIDI").is_some());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
