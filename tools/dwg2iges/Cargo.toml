@@ -12,7 +12,7 @@ publish = false
 
 [dependencies]
 acadrust = "=0.6.6"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 [profile.release]
 opt-level = 3

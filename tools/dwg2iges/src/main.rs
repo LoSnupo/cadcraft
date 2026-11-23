@@ -122,7 +122,9 @@ fn convert(input: &Path, output: &Path, tol: f64) -> Result<bool, String> {
     }
     let name = output.file_name().and_then(|n| n.to_str()).unwrap_or("out.igs");
     let source = input.file_name().and_then(|n| n.to_str()).unwrap_or("drawing");
-    let date = chrono::Local::now().format("%Y%m%d.%H%M%S").to_string();
+    // UTC, from the system clock (the IGES date field has no time zone).
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let date = chrono::DateTime::from_timestamp(i64::try_from(secs).unwrap_or(0), 0).map(|d| d.format("%Y%m%d.%H%M%S").to_string()).unwrap_or_default();
     std::fs::write(output, w.finish(name, &date, source)).map_err(|e| format!("cannot write {}: {e}", output.display()))?;
     let kinds: Vec<String> = counts.iter().map(|(k, n)| format!("{n} {k}")).collect();
     println!("  {} solid(s), {total} faces ({})", texts.len(), kinds.join(", "));
