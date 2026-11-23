@@ -35,6 +35,46 @@ pub fn specs() -> Vec<CommandSpec> {
 /// The layer the views go on.
 const VIEW_LAYER: &str = "VISTE_SOLIDI";
 
+/// The 3D solids and bodies in a drawing's model space (CADCraft keeps them as opaque objects).
+fn solid_count(d: &cadcraft_doc::Drawing) -> usize {
+    d.model
+        .iter()
+        .filter(
+            |e| matches!(&e.kind, EntityKind::Unknown(u) if u.dxf_type.eq_ignore_ascii_case("3DSOLID") || u.dxf_type.eq_ignore_ascii_case("BODY")),
+        )
+        .count()
+}
+
+/// After a drawing opens: when it holds 3D solids, which CADCraft cannot show in plan, draw their
+/// views at once, so the drawing does not look empty or broken. The views are not a change to
+/// the drawing (closing it asks nothing; saving keeps them), and a drawing saved with its views
+/// already on layer VISTE_SOLIDI does not get them twice.
+pub(crate) fn after_open(s: &mut Session, i: usize) {
+    if !cadcraft_iges::READS_FILES || !s.last_used.solid_views_on_open || s.active != i {
+        return;
+    }
+    let Some(st) = s.docs.get(i) else { return };
+    let n = solid_count(&st.doc);
+    if n == 0 || st.path.is_none() || st.doc.model.iter().any(|e| e.common.layer.eq_ignore_ascii_case(VIEW_LAYER)) {
+        return;
+    }
+    let unchanged = std::sync::Arc::ptr_eq(&st.doc, &st.saved);
+    match run_views(s, &json!({})) {
+        Ok(_) => {
+            if let Some(st) = s.docs.get_mut(i)
+                && unchanged
+            {
+                st.saved = st.doc.clone();
+            }
+            let _ = s.execute("zoom", &json!({"mode": "extents"}));
+            s.echo(format!(
+                "This drawing holds {n} 3D solid(s), which CADCraft does not show in plan: their front, right, top and isometric views were drawn on layer {VIEW_LAYER}. IGESEXPORT writes them as IGES."
+            ));
+        }
+        Err(e) => s.echo(format!("This drawing holds {n} 3D solid(s), which CADCraft does not show in plan; their views could not be drawn: {e}")),
+    }
+}
+
 fn source_of(s: &Session, cmd: &str, p: &Value) -> Result<(String, bool)> {
     match str_param(p, "source") {
         Some(src) => Ok((src.to_string(), false)),
@@ -262,5 +302,17 @@ mod tests {
         assert_eq!(s.doc().unwrap().header.str("CLAYER", "0"), "0", "the current layer is given back");
         assert!(s.doc().unwrap().layer("VISTE_SOLIDI").is_some());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A drawing whose only object is a solid: no views without a file to read them from, and
+    /// no solids means nothing happens at all.
+    #[test]
+    fn after_open_leaves_drawings_without_solids_alone() {
+        let mut s = Session::new();
+        let n = s.doc().unwrap().entity_count();
+        let i = s.active;
+        super::after_open(&mut s, i);
+        assert_eq!(s.doc().unwrap().entity_count(), n);
+        assert!(s.doc().unwrap().layer("VISTE_SOLIDI").is_none());
     }
 }

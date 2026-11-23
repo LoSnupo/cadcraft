@@ -8,6 +8,8 @@ pub(crate) fn convert(a: &ConvertArgs, io: &mut Streams) -> Result {
     let i = unicode(&a.input)?;
     let framing = a.framing.framing();
     let mut s = Session::empty();
+    // The file's own content: no solid views drawn on open.
+    s.last_used.solid_views_on_open = false;
     open(&mut s, &a.input)?;
     let d = s.doc()?;
     for m in read_note_messages(d, i).into_iter().chain(skipped_message(d, i)) {

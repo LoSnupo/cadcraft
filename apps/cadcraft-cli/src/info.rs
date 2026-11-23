@@ -7,6 +7,8 @@ use serde_json::json;
 
 pub(crate) fn info(a: &InfoArgs, io: &mut Streams) -> Result {
     let mut s = Session::empty();
+    // The file's own content: no solid views drawn on open.
+    s.last_used.solid_views_on_open = false;
     open(&mut s, &a.file)?;
     let v = s.execute("drawing.inspect", &json!({ "entities": false }))?;
     io.json(&v, a.compact);

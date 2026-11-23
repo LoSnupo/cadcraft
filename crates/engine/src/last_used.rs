@@ -31,6 +31,9 @@ pub struct LastUsed {
     pub rectang: RectangModes,
     /// STEELSECTION / STEELINFO / BEAMCHECK: the profile designation typed last.
     pub steel_profile: String,
+    /// Opening a drawing that holds 3D solids draws their views (SOLIDVIEWS) at once. Tools that
+    /// convert or inspect files turn it off so their output is the file's own content.
+    pub solid_views_on_open: bool,
 }
 
 impl Default for LastUsed {
@@ -39,6 +42,7 @@ impl Default for LastUsed {
             hatch_select: false,
             polygon_circumscribed: false,
             steel_profile: "IPE200".into(),
+            solid_views_on_open: true,
             rotate_angle: 0.0,
             scale_factor: 1.0,
             txt2mtxt: cmd::Txt2MtxtOptions::default(),
