@@ -39,7 +39,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("export", "Export...", run_export)
             .menu(&["File", "Export..."])
             .alias(&["exp"])
-            .params("{path? (else returns base64 `data`), format?: dxf|dwg|svg|png|pdf (default: the path's extension)} → {format, bytes, path? | data}")
+            .params("{path? (else returns base64 `data`), format?: dxf|dwg|svg|png|pdf|igs (default: the path's extension; igs writes the 3D solids, as IGESEXPORT, and needs `path`)} → {format, bytes, path? | data}")
             .noundo(),
         CommandSpec::new("preview", "Plot Preview", run_preview)
             .menu(&["File", "Plot Preview"])
@@ -114,8 +114,13 @@ fn run_export(s: &mut Session, p: &Value) -> Result<Value> {
         Some(f) => f.trim().trim_start_matches('.').to_ascii_lowercase(),
         None => path.map(extension).unwrap_or_default(),
     };
+    // IGES holds the drawing's 3D solids: IGESEXPORT writes it.
+    if matches!(format.as_str(), "igs" | "iges") {
+        let path = path.ok_or_else(|| bad("export", "IGES export needs a `path`"))?;
+        return super::iges::export_to(s, path, p);
+    }
     if !EXPORT_FORMATS.contains(&format.as_str()) {
-        return Err(bad("export", "`format` must be dxf, dwg, svg, png or pdf (or give a `path` with one of those extensions)"));
+        return Err(bad("export", "`format` must be dxf, dwg, svg, png, pdf or igs (or give a `path` with one of those extensions)"));
     }
     let file = format!("export.{format}");
     let bytes = (hooks.write)(s.doc()?, &file).map_err(|e| bad("export", e))?;

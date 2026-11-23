@@ -26,13 +26,29 @@ pub fn route(app: &mut CadApp, id: &str) -> Result<Value, String> {
         "import" | "imp" => app
             .pick_then(Pick::Open, |app, path| app.run("import", json!({ "path": path })))
             .unwrap_or_else(|| no_picker(app, "IMPORT", r#"import {"path": "parts.dxf"}"#)),
+        // A 3D model is exported where the user says: the save dialog, named after the drawing.
+        "igesexport" | "iges" | "esportaiges" => app
+            .pick_then(Pick::Save(format!("{stem}.igs")), |app, path| app.run("igesexport", json!({ "path": path })))
+            .unwrap_or_else(|| no_picker(app, "IGESEXPORT", r#"igesexport {"path": "part.igs"}"#)),
         "publish" => app
             .pick_then(Pick::Save(format!("{stem}.pdf")), |app, path| app.run("publish", json!({ "path": path })))
             .unwrap_or_else(|| no_picker(app, "PUBLISH", "publish {}")),
+        // A drawing of 3D solids offers IGES first; the dialog's other formats stay available.
         _ => app
-            .pick_then(Pick::Save(format!("{stem}.svg")), |app, path| app.run("export", json!({ "path": path })))
+            .pick_then(Pick::Save(format!("{stem}.{}", if has_solids(app) { "igs" } else { "svg" })), |app, path| {
+                app.run("export", json!({ "path": path }))
+            })
             .unwrap_or_else(|| no_picker(app, "EXPORT", r#"export {"format": "svg"}"#)),
     }
+}
+
+/// Whether the drawing holds 3D solids (kept as opaque objects, shown through SOLIDVIEWS).
+fn has_solids(app: &CadApp) -> bool {
+    app.session.doc().is_ok_and(|d| {
+        d.model.iter().any(|e| {
+            matches!(&e.kind, cadcraft_doc::EntityKind::Unknown(u) if u.dxf_type.eq_ignore_ascii_case("3DSOLID") || u.dxf_type.eq_ignore_ascii_case("BODY"))
+        })
+    })
 }
 
 fn no_picker(app: &mut CadApp, name: &str, example: &str) -> Result<Value, String> {

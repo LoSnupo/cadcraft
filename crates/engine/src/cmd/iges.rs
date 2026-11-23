@@ -189,6 +189,16 @@ fn views_of(_src: &std::path::Path) -> Result<(Vec<cadcraft_iges::View>, Vec<Str
     Err(bad("solidviews", "solid views are not available in this build"))
 }
 
+/// EXPORT to an `.igs` path: the same as IGESEXPORT with that path.
+pub(super) fn export_to(s: &mut Session, path: &str, p: &Value) -> Result<Value> {
+    let mut q = p.clone();
+    if let Some(o) = q.as_object_mut() {
+        o.insert("path".into(), json!(path));
+        o.remove("format");
+    }
+    run(s, &q)
+}
+
 fn run(s: &mut Session, p: &Value) -> Result<Value> {
     if !cadcraft_iges::READS_FILES {
         return Err(bad("igesexport", "IGES export is not available in this build"));
@@ -288,6 +298,10 @@ mod tests {
         assert_eq!(r["faces"]["plane"], 2, "{r}");
         assert_eq!(r["faces"]["cylinder"], 2, "{r}");
         assert!(r["warnings"].as_array().unwrap().is_empty(), "{r}");
+        // EXPORT to an .igs path is the same.
+        let out2 = dir.join("tube2.igs");
+        s.execute("export", &json!({"source": src.to_string_lossy(), "path": out2.to_string_lossy()})).unwrap();
+        assert!(std::fs::read_to_string(&out2).unwrap().contains("144,"));
         let text = std::fs::read_to_string(&out).unwrap();
         assert!(text.lines().all(|l| l.len() == 80), "fixed 80-column records");
         // Two Directory Entry lines per trimmed surface, one per face.
