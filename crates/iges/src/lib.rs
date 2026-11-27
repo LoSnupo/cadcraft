@@ -24,6 +24,11 @@ pub use views::View;
 
 use std::collections::BTreeMap;
 
+/// Why a drawing gives nothing to export: often a 2D drawing (views and dimensions) made from a
+/// 3D model in another program, which does not carry the model itself.
+const NO_SOLIDS: &str = "the drawing holds no 3D solids (3DSOLID or BODY) in model space, only 2D objects such as lines, arcs and dimensions: \
+     a 2D drawing of a part does not contain its 3D model, so export the model from the program it was designed in, or use a DWG that holds the 3D solid";
+
 /// Default chord tolerance of the trimming edges, mm.
 pub const DEFAULT_TOL: f64 = 0.01;
 
@@ -86,7 +91,7 @@ pub fn now_iso() -> String {
 /// Convert solids given as SAT text to STEP. `file_name` and `source` go into the header.
 pub fn step_from_sat(texts: &[String], file_name: &str, source: &str, date: &str, tol: f64) -> Result<Conversion, String> {
     if texts.is_empty() {
-        return Err("no 3D solids found in model space".into());
+        return Err(NO_SOLIDS.into());
     }
     let tol = if tol.is_finite() && tol > 0.0 { tol.clamp(1e-5, 10.0) } else { DEFAULT_TOL };
     let mut c = Conversion { solids: texts.len(), ..Default::default() };
@@ -127,7 +132,7 @@ pub fn now() -> String {
 /// Convert solids given as SAT text. `file_name` and `source` go into the Global section.
 pub fn from_sat(texts: &[String], file_name: &str, source: &str, date: &str, tol: f64) -> Result<Conversion, String> {
     if texts.is_empty() {
-        return Err("no 3D solids found in model space".into());
+        return Err(NO_SOLIDS.into());
     }
     let tol = if tol.is_finite() && tol > 0.0 { tol.clamp(1e-5, 10.0) } else { DEFAULT_TOL };
     let mut w = writer::Iges::new();
@@ -165,7 +170,7 @@ pub fn from_sat(texts: &[String], file_name: &str, source: &str, date: &str, tol
 /// that could not be read.
 pub fn views_from_sat(texts: &[String], tol: f64) -> Result<(Vec<View>, Vec<String>), String> {
     if texts.is_empty() {
-        return Err("no 3D solids found in model space".into());
+        return Err(NO_SOLIDS.into());
     }
     let tol = if tol.is_finite() && tol > 0.0 { tol.clamp(1e-5, 10.0) } else { DEFAULT_TOL };
     let (mut edges, mut faces, mut warnings) = (Vec::new(), Vec::new(), Vec::new());
