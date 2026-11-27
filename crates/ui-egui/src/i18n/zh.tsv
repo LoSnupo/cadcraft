@@ -1528,3 +1528,5 @@ menu	View	视图
 	Solid Views	实体视图
 	Solid Views (3D Solids)	实体视图（三维实体）
 	IGES (3D solids)	IGES（三维实体）
+	Export STEP (3D Solids)	导出 STEP（三维实体）
+	STEP (3D solids)	STEP（三维实体）

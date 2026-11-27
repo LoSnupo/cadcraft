@@ -39,7 +39,7 @@ pub struct Trimmed {
     pub kind: &'static str,
 }
 
-fn area(p: &[(f64, f64)]) -> f64 {
+pub(crate) fn area(p: &[(f64, f64)]) -> f64 {
     p.windows(2).map(|w| w[0].0 * w[1].1 - w[1].0 * w[0].1).sum::<f64>() / 2.0
 }
 
@@ -72,7 +72,7 @@ fn wrap(d: f64) -> f64 {
 }
 
 /// Angles made continuous along a closed loop.
-fn unwrapped(s: &Surface, pts: &[V3]) -> Vec<(f64, f64)> {
+pub(crate) fn unwrapped(s: &Surface, pts: &[V3]) -> Vec<(f64, f64)> {
     let mut out: Vec<(f64, f64)> = Vec::with_capacity(pts.len());
     for p in pts {
         let (a, h) = s.param(*p);
@@ -291,7 +291,7 @@ mod tests {
                 s.eval(2.0 + 0.2 * t.cos(), 50.0 + 8.0 * t.sin())
             })
             .collect();
-        let face = Face { surface: s, loops: vec![ring(0.0, true), ring(100.0, false), hole] };
+        let face = Face { surface: s, loops: vec![ring(0.0, true), ring(100.0, false), hole], topo: Vec::new(), shell: 0 };
         let t = trim(&face).unwrap();
         assert_eq!(t.inner.len(), 1);
         let row = BSpline { degree: 2, knots: t.surf.knots_u.clone(), ctrl: t.surf.ctrl[..9].to_vec(), weights: Some(t.surf.weights[..9].to_vec()) };

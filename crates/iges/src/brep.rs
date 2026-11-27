@@ -9,6 +9,23 @@ pub struct Face {
     pub surface: Surface,
     /// Closed loops (first point repeated at the end), in model space.
     pub loops: Vec<Vec<V3>>,
+    /// The same loops as their edges in order: the edge's record number and whether the loop
+    /// runs against the edge (a reversed coedge). Faces sharing an edge share its number.
+    pub topo: Vec<Vec<(i64, bool)>>,
+    /// Which shell of the solid the face belongs to, counted from 0.
+    pub shell: usize,
+}
+
+/// An edge as STEP needs it: its end vertices (record numbers and points), the curve it lies
+/// on and its points sampled from start to end.
+#[derive(Clone, Debug)]
+pub struct EdgeGeom {
+    pub v0: i64,
+    pub v1: i64,
+    pub p0: V3,
+    pub p1: V3,
+    pub curve: Option<Curve>,
+    pub pts: Vec<V3>,
 }
 
 #[derive(Debug, Default)]
@@ -21,7 +38,10 @@ pub struct Report {
     pub surface_gap: f64,
     /// Every edge once, sampled from its start to its end vertex.
     pub edges: Vec<Vec<V3>>,
+    /// Every edge once, by its record number.
+    pub edge_geom: std::collections::BTreeMap<i64, EdgeGeom>,
     seen: std::collections::HashSet<i64>,
+    shells: usize,
 }
 
 /// Bounds every walk along `next` pointers: a cycle in hostile data ends here.
@@ -161,12 +181,12 @@ fn point(sat: &Sat, vertex: Option<i64>, x: &Xform) -> Result<V3, String> {
     Ok(x.point(V3::from(c)))
 }
 
-/// An edge's points from its start vertex to its end vertex.
-fn edge_points(sat: &Sat, edge: &Rec, x: &Xform, tol: f64, rep: &mut Report) -> Result<Vec<V3>, String> {
+/// An edge's points from its start vertex to its end vertex, and the curve it lies on.
+fn edge_points(sat: &Sat, edge: &Rec, x: &Xform, tol: f64, rep: &mut Report) -> Result<(Vec<V3>, Option<Curve>), String> {
     let (p0, p1) = (point(sat, edge.ptr(0), x)?, point(sat, edge.ptr(2), x)?);
     let Some(crec) = edge.ptr(5).and_then(|p| sat.rec(p)) else {
         // An edge without a curve is a point.
-        return Ok(vec![p0, p1]);
+        return Ok((vec![p0, p1], None));
     };
     let (c, curve_rev) = curve(crec, x)?;
     let (t0, t1) = (edge.num(1).ok_or("an edge has no start parameter")?, edge.num(3).ok_or("an edge has no end parameter")?);
@@ -183,23 +203,29 @@ fn edge_points(sat: &Sat, edge: &Rec, x: &Xform, tol: f64, rep: &mut Report) -> 
     if let (Some(a), Some(b)) = (pts.first(), pts.last()) {
         rep.vertex_gap = rep.vertex_gap.max(a.dist(p0)).max(b.dist(p1));
     }
-    Ok(pts)
+    Ok((pts, Some(c)))
 }
 
-fn loop_points(sat: &Sat, lp: &Rec, x: &Xform, tol: f64, rep: &mut Report) -> Result<Vec<V3>, String> {
+fn loop_points(sat: &Sat, lp: &Rec, x: &Xform, tol: f64, rep: &mut Report) -> Result<(Vec<V3>, Vec<(i64, bool)>), String> {
     let first = lp.ptr(1).ok_or("a loop has no coedge")?;
     let mut out: Vec<V3> = Vec::new();
+    let mut topo = Vec::new();
     let mut ce = first;
     for _ in 0..MAX_CHAIN {
         let co = get(sat, Some(ce), "coedge")?;
         let edge = get(sat, co.ptr(3), "edge")?;
-        let mut pts = edge_points(sat, edge, x, tol, rep)?;
-        if let Some(e) = co.ptr(3)
-            && rep.seen.insert(e)
-        {
-            rep.edges.push(pts.clone());
+        let (mut pts, curve) = edge_points(sat, edge, x, tol, rep)?;
+        let reversed = co.word(4) == Some("reversed");
+        if let Some(e) = co.ptr(3) {
+            if rep.seen.insert(e) {
+                rep.edges.push(pts.clone());
+                let (p0, p1) = (point(sat, edge.ptr(0), x)?, point(sat, edge.ptr(2), x)?);
+                let (v0, v1) = (edge.ptr(0).unwrap_or(-1), edge.ptr(2).unwrap_or(-1));
+                rep.edge_geom.insert(e, EdgeGeom { v0, v1, p0, p1, curve, pts: pts.clone() });
+            }
+            topo.push((e, reversed));
         }
-        if co.word(4) == Some("reversed") {
+        if reversed {
             pts.reverse();
         }
         if let (Some(last), Some(head)) = (out.last(), pts.first())
@@ -215,7 +241,7 @@ fn loop_points(sat: &Sat, lp: &Rec, x: &Xform, tol: f64, rep: &mut Report) -> Re
             {
                 out.push(a);
             }
-            return Ok(out);
+            return Ok((out, topo));
         }
     }
     Err("a loop does not close".into())
@@ -242,11 +268,16 @@ pub fn faces(sat: &Sat, tol: f64) -> (Vec<Face>, Report) {
             let mut shell = l.ptr(1);
             for _ in 0..MAX_CHAIN {
                 let Some(s) = shell.and_then(|p| sat.rec(p)) else { break };
+                let shell_no = rep.shells;
+                rep.shells += 1;
                 let mut face = s.ptr(2);
                 for _ in 0..MAX_CHAIN {
                     let Some(f) = face.and_then(|p| sat.rec(p)) else { break };
                     match one_face(sat, f, &x, tol, &mut rep) {
-                        Ok(fc) => out.push(fc),
+                        Ok(mut fc) => {
+                            fc.shell = shell_no;
+                            out.push(fc)
+                        }
                         Err(e) => rep.skipped.push(e),
                     }
                     face = f.ptr(0);
@@ -264,10 +295,13 @@ fn one_face(sat: &Sat, f: &Rec, x: &Xform, tol: f64, rep: &mut Report) -> Result
     let srec = get(sat, f.ptr(4), "surface")?;
     let mut surface = surface(srec, x)?;
     let mut loops = Vec::new();
+    let mut topo = Vec::new();
     let mut lp = f.ptr(1);
     for _ in 0..MAX_CHAIN {
         let Some(l) = lp.and_then(|p| sat.rec(p)) else { break };
-        loops.push(loop_points(sat, l, x, tol, rep)?);
+        let (pts, edges) = loop_points(sat, l, x, tol, rep)?;
+        loops.push(pts);
+        topo.push(edges);
         lp = l.ptr(0);
     }
     if loops.is_empty() {
@@ -288,5 +322,5 @@ fn one_face(sat: &Sat, f: &Rec, x: &Xform, tol: f64, rep: &mut Report) -> Result
     if g > 0.5 {
         return Err(format!("a {} face's edges are {g:.3} mm off its surface", srec.base()));
     }
-    Ok(Face { surface, loops })
+    Ok(Face { surface, loops, topo, shell: 0 })
 }

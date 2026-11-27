@@ -1,6 +1,7 @@
-//! IGESEXPORT: the 3D solids of the drawing's file as an IGES 5.3 file of trimmed surfaces, for
-//! CAM software (tube laser, CNC) that imports IGES. CADCraft keeps solids as opaque data, so
-//! the solids are read from the file on disk (the drawing as last saved, or `source`).
+//! IGESEXPORT and STEPEXPORT: the 3D solids of the drawing's file as an IGES 5.3 file of
+//! trimmed surfaces or a STEP file of closed solids, for CAM software (tube laser, CNC).
+//! CADCraft keeps solids as opaque data, so the solids are read from the file on disk (the
+//! drawing as last saved, or `source`).
 
 use serde_json::{Value, json};
 
@@ -19,6 +20,14 @@ pub fn specs() -> Vec<CommandSpec> {
             .params(
                 "{path?: output .igs (default: beside the drawing's file), source?: .dwg/.dxf/.sat file (default: the drawing's file as saved), \
                  tolerance?: mm chord tolerance of the edges (default 0.01)} → {path, solids, faces, warnings, message}",
+            )
+            .noundo(),
+        CommandSpec::new("stepexport", "Export STEP (3D Solids)", run_step)
+            .menu(&["File", "Export STEP (3D Solids)"])
+            .alias(&["step", "esportastep"])
+            .params(
+                "{path?: output .stp (default: beside the drawing's file), source?: .dwg/.dxf/.sat file (default: the drawing's file as saved), \
+                 tolerance?: mm chord tolerance of the curved edges that are not circles (default 0.01)} → {path, solids, closed, open, faces, warnings, message}",
             )
             .noundo(),
         CommandSpec::new("solidviews", "Solid Views", run_views)
@@ -189,14 +198,53 @@ fn views_of(_src: &std::path::Path) -> Result<(Vec<cadcraft_iges::View>, Vec<Str
     Err(bad("solidviews", "solid views are not available in this build"))
 }
 
-/// EXPORT to an `.igs` path: the same as IGESEXPORT with that path.
-pub(super) fn export_to(s: &mut Session, path: &str, p: &Value) -> Result<Value> {
+/// EXPORT to an `.igs` or `.stp` path: the same as IGESEXPORT or STEPEXPORT with that path.
+pub(super) fn export_to(s: &mut Session, path: &str, p: &Value, step: bool) -> Result<Value> {
     let mut q = p.clone();
     if let Some(o) = q.as_object_mut() {
         o.insert("path".into(), json!(path));
         o.remove("format");
     }
-    run(s, &q)
+    if step { run_step(s, &q) } else { run(s, &q) }
+}
+
+fn run_step(s: &mut Session, p: &Value) -> Result<Value> {
+    if !cadcraft_iges::READS_FILES {
+        return Err(bad("stepexport", "STEP export is not available in this build"));
+    }
+    let (source, dirty) = source_of(s, "stepexport", p)?;
+    let src = std::path::Path::new(&source);
+    let out = match str_param(p, "path") {
+        Some(o) => o.to_string(),
+        None => src.with_extension("stp").to_string_lossy().into_owned(),
+    };
+    let name = std::path::Path::new(&out).file_name().and_then(|n| n.to_str()).unwrap_or("out.stp").to_string();
+    let tol = f64_or(p, "tolerance", cadcraft_iges::DEFAULT_TOL);
+    let c = convert_step(src, &name, tol)?;
+    super::exchange::write_file("stepexport", &out, c.step.as_bytes())?;
+    let mut msg = format!("{}\nSTEP written to {out}", c.summary());
+    if dirty {
+        msg.push_str("\n(solids read from the drawing as last saved)");
+    }
+    Ok(json!({
+        "path": out,
+        "solids": c.solids,
+        "closed": c.closed,
+        "open": c.open,
+        "faces": c.faces,
+        "warnings": c.warnings,
+        "message": msg,
+    }))
+}
+
+#[cfg(not(any(target_arch = "wasm32", all(target_os = "freebsd", target_arch = "aarch64"))))]
+fn convert_step(src: &std::path::Path, name: &str, tol: f64) -> Result<cadcraft_iges::Conversion> {
+    cadcraft_iges::convert_file_step(src, name, tol).map_err(|e| bad("stepexport", e))
+}
+
+#[cfg(any(target_arch = "wasm32", all(target_os = "freebsd", target_arch = "aarch64")))]
+fn convert_step(_src: &std::path::Path, _name: &str, _tol: f64) -> Result<cadcraft_iges::Conversion> {
+    Err(bad("stepexport", "STEP export is not available in this build"))
 }
 
 fn run(s: &mut Session, p: &Value) -> Result<Value> {
@@ -266,10 +314,20 @@ mod tests {
         t += &r("cone-surface $-1 -1 $-1 0 0 0 0 0 1 30 0 0 1 I I 0 1 30 forward I I I I");
         t += &r("cone-surface $-1 -1 $-1 0 0 0 0 0 1 26 0 0 1 I I 0 1 26 forward I I I I");
         // Coedges: (edge, loop, partner) — bottom outer 27, bottom inner 28, top outer 29, top inner 30.
-        let co = [(27, 7, 23), (28, 8, 25), (29, 9, 24), (30, 10, 26), (27, 11, 19), (29, 12, 21), (28, 13, 20), (30, 14, 22)];
-        for (edge, lp, partner) in co {
+        // Each edge is used once each way, so the faces close the tube's volume.
+        let co = [
+            (27, 7, 23, "reversed"),
+            (28, 8, 25, "forward"),
+            (29, 9, 24, "forward"),
+            (30, 10, 26, "reversed"),
+            (27, 11, 19, "forward"),
+            (29, 12, 21, "reversed"),
+            (28, 13, 20, "reversed"),
+            (30, 14, 22, "forward"),
+        ];
+        for (edge, lp, partner, sense) in co {
             let me = 19 + co.iter().position(|c| c.1 == lp).unwrap_or(0);
-            t += &r(&format!("coedge $-1 -1 $-1 ${me} ${me} ${partner} ${edge} forward ${lp} $-1"));
+            t += &r(&format!("coedge $-1 -1 $-1 ${me} ${me} ${partner} ${edge} {sense} ${lp} $-1"));
         }
         for k in 0..4 {
             t += &r(&format!("edge $-1 -1 $-1 ${} 0 ${} 6.283185307179586 $-1 ${} forward @7 unknown", 31 + k, 31 + k, 39 + k));
@@ -315,6 +373,32 @@ mod tests {
         assert!(s.doc().unwrap().entity_count() > n + 4 * 4);
         assert_eq!(s.doc().unwrap().header.str("CLAYER", "0"), "0", "the current layer is given back");
         assert!(s.doc().unwrap().layer("VISTE_SOLIDI").is_some());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stepexport_writes_the_tube_and_export_does_too() {
+        let dir = std::env::temp_dir().join(format!("cadcraft-step-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("tube.sat");
+        std::fs::write(&src, tube_sat()).unwrap();
+        let mut s = Session::new();
+        // Without `path` the file goes beside the source, named after it.
+        let r = s.execute("stepexport", &json!({"source": src.to_string_lossy()})).unwrap();
+        assert_eq!(r["path"], dir.join("tube.stp").to_string_lossy().as_ref(), "{r}");
+        assert_eq!(r["faces"]["plane"], 2, "{r}");
+        assert_eq!(r["faces"]["cylinder"], 2, "{r}");
+        assert_eq!((r["closed"].as_u64(), r["open"].as_u64()), (Some(1), Some(0)), "{r}");
+        assert!(r["warnings"].as_array().unwrap().is_empty(), "{r}");
+        let text = std::fs::read_to_string(dir.join("tube.stp")).unwrap();
+        assert!(text.starts_with("ISO-10303-21;") && text.contains("FILE_NAME('tube.stp'"));
+        assert!(r["message"].as_str().unwrap().contains("STEP written to"), "{r}");
+        // EXPORT to a .step path is the same.
+        let out2 = dir.join("tube2.step");
+        let r2 = s.execute("export", &json!({"source": src.to_string_lossy(), "path": out2.to_string_lossy()})).unwrap();
+        assert_eq!(r2["faces"], r["faces"]);
+        assert!(std::fs::read_to_string(&out2).unwrap().contains("ADVANCED_FACE"));
+        assert!(Session::new().execute("stepexport", &json!({})).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

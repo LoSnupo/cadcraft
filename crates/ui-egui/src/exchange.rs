@@ -30,6 +30,9 @@ pub fn route(app: &mut CadApp, id: &str) -> Result<Value, String> {
         "igesexport" | "iges" | "esportaiges" => app
             .pick_then(Pick::Save(format!("{stem}.igs")), |app, path| app.run("igesexport", json!({ "path": path })))
             .unwrap_or_else(|| no_picker(app, "IGESEXPORT", r#"igesexport {"path": "part.igs"}"#)),
+        "stepexport" | "step" | "esportastep" => app
+            .pick_then(Pick::Save(format!("{stem}.stp")), |app, path| app.run("stepexport", json!({ "path": path })))
+            .unwrap_or_else(|| no_picker(app, "STEPEXPORT", r#"stepexport {"path": "part.stp"}"#)),
         "publish" => app
             .pick_then(Pick::Save(format!("{stem}.pdf")), |app, path| app.run("publish", json!({ "path": path })))
             .unwrap_or_else(|| no_picker(app, "PUBLISH", "publish {}")),

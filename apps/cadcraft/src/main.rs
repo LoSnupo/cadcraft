@@ -219,7 +219,7 @@ fn file_dialog(pick: &Pick) -> rfd::FileDialog {
 /// filter's extension, and macOS accepts only listed extensions, replacing any other with the
 /// first one. DWG must be listed for a `.dwg` name to survive, and a drawing opened from DWG
 /// then defaults to DWG; other names keep DXF first.
-fn filters_for_save(name: &str) -> [(&'static str, &'static str); 7] {
+fn filters_for_save(name: &str) -> [(&'static str, &'static str); 8] {
     let mut filters = [
         ("Drawing (DXF)", "dxf"),
         ("Drawing (DWG)", "dwg"),
@@ -228,6 +228,7 @@ fn filters_for_save(name: &str) -> [(&'static str, &'static str); 7] {
         ("PNG", "png"),
         ("PDF", "pdf"),
         ("IGES (3D solids)", "igs"),
+        ("STEP (3D solids)", "stp"),
     ];
     let lower = name.to_ascii_lowercase();
     filters.sort_by_key(|(_, ext)| !lower.ends_with(&format!(".{ext}")));
@@ -532,6 +533,7 @@ mod tests {
         assert_eq!(first("plan.pdf"), "pdf");
         assert_eq!(first("office.dwt"), "dwt");
         assert_eq!(first("tube.igs"), "igs");
+        assert_eq!(first("tube.stp"), "stp");
         for name in ["a.dwg", "b.dxf", "c"] {
             let exts: Vec<_> = filters_for_save(name).iter().map(|(_, e)| *e).collect();
             assert!(exts.contains(&"dwg") && exts.contains(&"dxf"), "{name}");
