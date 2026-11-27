@@ -1,6 +1,6 @@
 [package]
 name = "cadcraft-iges"
-description = "IGES 5.3 export of the 3D solids (ACIS data) of DWG/DXF drawings as trimmed surfaces"
+description = "IGES 5.3 (trimmed surfaces) and STEP (closed solids) export of the 3D solids (ACIS data) of DWG/DXF drawings"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

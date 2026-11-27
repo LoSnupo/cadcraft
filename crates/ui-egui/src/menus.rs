@@ -481,7 +481,8 @@ fn run_ui_command_inner(app: &mut CadApp, id: &str, params: &Value) -> Option<Re
             app.ui.start_tab = false;
             Ok(Value::Null)
         }
-        "export" | "exp" | "import" | "imp" | "publish" | "preview" | "pre" | "igesexport" | "iges" | "esportaiges"
+        "export" | "exp" | "import" | "imp" | "publish" | "preview" | "pre" | "igesexport" | "iges" | "esportaiges" | "stepexport" | "step"
+        | "esportastep"
             if params.is_null() && app.session.state().is_ok() =>
         {
             return Some(crate::exchange::route(app, id));
